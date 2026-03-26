@@ -27,6 +27,7 @@ from server_utils.media_validation import (
     validate_image_file,
 )
 from services.interfaces import LTXAPIClient
+from services.comfyui_client import ComfyUIClient
 from state.app_state_types import AppState
 from state.app_settings import should_video_generate_with_ltx_api
 
@@ -82,17 +83,19 @@ class VideoGenerationHandler(StateHandlerBase):
         if self._generation.is_generation_running():
             raise HTTPError(409, "Generation already in progress")
 
-        resolution = req.resolution
+        # Route through ComfyUI via ComfyKit
+        return self._generate_via_comfyui(req)
 
+    def _generate_via_comfyui(self, req: GenerateVideoRequest) -> GenerateVideoResponse:
+        """Generate video by dispatching a workflow to an external ComfyUI instance."""
+        generation_id = self._make_generation_id()
+        t_start = time.perf_counter()
+
+        resolution = req.resolution
         duration = int(float(req.duration))
         fps = int(float(req.fps))
 
-        audio_path = normalize_optional_path(req.audioPath)
-        if audio_path:
-            return self._generate_a2v(req, duration, fps, audio_path=audio_path)
-
-        logger.info("Resolution %s - using fast pipeline", resolution)
-
+        # Resolution mapping
         RESOLUTION_MAP_16_9: dict[str, tuple[int, int]] = {
             "540p": (960, 544),
             "720p": (1280, 704),
@@ -102,52 +105,117 @@ class VideoGenerationHandler(StateHandlerBase):
         def get_16_9_size(res: str) -> tuple[int, int]:
             return RESOLUTION_MAP_16_9.get(res, (960, 544))
 
-        def get_9_16_size(res: str) -> tuple[int, int]:
-            w, h = get_16_9_size(res)
-            return h, w
-
         match req.aspectRatio:
             case "9:16":
-                width, height = get_9_16_size(resolution)
-            case "16:9":
+                w, h = get_16_9_size(resolution)
+                width, height = h, w
+            case _:
                 width, height = get_16_9_size(resolution)
 
         num_frames = self._compute_num_frames(duration, fps)
-
-        image = None
-        image_path = normalize_optional_path(req.imagePath)
-        if image_path:
-            image = self._prepare_image(image_path, width, height)
-            logger.info("Image: %s -> %sx%s", image_path, width, height)
-
-        generation_id = self._make_generation_id()
         seed = self._resolve_seed()
 
-        try:
-            self._pipelines.load_gpu_pipeline("fast", should_warm=False)
-            self._generation.start_generation(generation_id)
+        image_path = normalize_optional_path(req.imagePath)
+        is_i2v = image_path is not None
+        gen_mode = "i2v" if is_i2v else "t2v"
 
-            output_path = self.generate_video(
-                prompt=req.prompt,
-                image=image,
-                height=height,
-                width=width,
-                num_frames=num_frames,
-                fps=fps,
-                seed=seed,
-                camera_motion=req.cameraMotion,
-                negative_prompt=req.negativePrompt,
+        # Build prompt with camera motion suffix
+        enhanced_prompt = req.prompt + self.config.camera_motion_prompts.get(req.cameraMotion, "")
+        negative_prompt = req.negativePrompt or self.config.default_negative_prompt
+
+        logger.info(
+            "[comfyui:%s] Starting generation %s (%dx%d, %d frames, %d fps, seed=%d)",
+            gen_mode, generation_id, width, height, num_frames, fps, seed,
+        )
+
+        try:
+            self._generation.start_api_generation(generation_id)
+            self._generation.update_progress("preparing", 5, None, None)
+
+            # Check ComfyUI availability
+            comfyui_url = self.state.app_settings.comfyui_url or None
+            comfyui = ComfyUIClient(comfyui_url=comfyui_url)
+            if not comfyui.is_available():
+                raise HTTPError(503, "ComfyUI server is not reachable. Please ensure ComfyUI is running.")
+
+            # Build ComfyKit params
+            params: dict[str, object] = {
+                "prompt": enhanced_prompt,
+                "negative_prompt": negative_prompt,
+                "width": width,
+                "height": height,
+                "num_frames": num_frames,
+                "fps": fps,
+                "seed": seed,
+                "t2v_mode": not is_i2v,  # False = I2V, True = T2V
+            }
+
+            # Inject model selections from settings (if configured)
+            model_cfg = self.state.app_settings.comfyui_models
+            if model_cfg.checkpoint:
+                params["checkpoint"] = model_cfg.checkpoint
+            if model_cfg.text_encoder:
+                params["text_encoder"] = model_cfg.text_encoder
+            if model_cfg.distilled_lora:
+                params["distilled_lora"] = model_cfg.distilled_lora
+            if model_cfg.upscaler:
+                params["upscaler"] = model_cfg.upscaler
+            if model_cfg.latent_upscale_model:
+                params["latent_upscale_model"] = model_cfg.latent_upscale_model
+            if model_cfg.video_vae:
+                params["video_vae"] = model_cfg.video_vae
+            if model_cfg.audio_vae:
+                params["audio_vae"] = model_cfg.audio_vae
+
+            if is_i2v and image_path:
+                validated_image = validate_image_file(image_path)
+                params["image"] = str(validated_image)
+                logger.info("[comfyui:%s] Input image: %s", gen_mode, validated_image)
+
+            # Select workflow
+            workflow_name = "video_ltx2_3_i2v.json"
+            # TODO: Add separate T2V workflow when available. For now the I2V
+            # workflow supports both modes via the t2v_mode boolean switch.
+
+            self._generation.update_progress("queued", 10, None, None)
+
+            # Execute via ComfyKit
+            self._generation.update_progress("inference", 20, None, None)
+            result = comfyui.execute_workflow_sync(workflow_name, params)
+
+            if self._generation.is_generation_cancelled():
+                raise RuntimeError("Generation was cancelled")
+
+            if not result.is_success:
+                raise RuntimeError(f"ComfyUI workflow failed: {result.error}")
+
+            video_url = result.video_url
+            if not video_url:
+                raise RuntimeError("ComfyUI workflow completed but no video output was found")
+
+            # Download the video from ComfyUI to local output path
+            self._generation.update_progress("downloading", 85, None, None)
+            output_path = self._make_output_path()
+            comfyui.download_video(video_url, output_path)
+
+            t_end = time.perf_counter()
+            logger.info(
+                "[comfyui:%s] Generation complete in %.2fs (comfykit: %.2fs), output: %s",
+                gen_mode, t_end - t_start, result.duration or 0, output_path,
             )
 
-            self._generation.complete_generation(output_path)
-            return GenerateVideoResponse(status="complete", video_path=output_path)
+            self._generation.update_progress("complete", 100, None, None)
+            self._generation.complete_generation(str(output_path))
+            return GenerateVideoResponse(status="complete", video_path=str(output_path))
 
+        except HTTPError:
+            self._generation.fail_generation("ComfyUI unavailable")
+            raise
         except Exception as e:
             self._generation.fail_generation(str(e))
             if "cancelled" in str(e).lower():
                 logger.info("Generation cancelled by user")
                 return GenerateVideoResponse(status="cancelled")
-
             raise HTTPError(500, str(e)) from e
 
     def generate_video(

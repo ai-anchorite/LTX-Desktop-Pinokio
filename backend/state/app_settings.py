@@ -59,6 +59,21 @@ class ProModelSettings(SettingsBaseModel):
         return _clamp_int(value, minimum=1, maximum=100, default=20)
 
 
+class ComfyUIModelSettings(SettingsBaseModel):
+    """Model selections for ComfyUI workflow execution.
+
+    Each field corresponds to a model slot that workflows can reference.
+    Empty string means "use the workflow default".
+    """
+    checkpoint: str = ""            # All-in-one checkpoint (checkpoints/ or diffusion_models/)
+    text_encoder: str = ""          # Text encoder (text_encoders/ or clip/)
+    video_vae: str = ""             # Video VAE (vae/)
+    audio_vae: str = ""             # Audio VAE (vae/)
+    distilled_lora: str = ""        # Distilled LoRA for fast inference (loras/)
+    upscaler: str = ""              # Spatial upscale model (upscale_models/)
+    latent_upscale_model: str = ""  # Latent upscale model (latent_upscale_models/)
+
+
 class AppSettings(SettingsBaseModel):
     use_torch_compile: bool = False
     load_on_startup: bool = False
@@ -75,6 +90,8 @@ class AppSettings(SettingsBaseModel):
     seed_locked: bool = False
     locked_seed: int = 42
     models_dir: str = ""
+    comfyui_url: str = ""
+    comfyui_models: ComfyUIModelSettings = Field(default_factory=ComfyUIModelSettings)
 
     @field_validator("prompt_cache_size", mode="before")
     @classmethod
@@ -147,6 +164,8 @@ class SettingsResponse(SettingsBaseModel):
     seed_locked: bool = False
     locked_seed: int = 42
     models_dir: str = ""
+    comfyui_url: str = ""
+    comfyui_models: ComfyUIModelSettings = Field(default_factory=ComfyUIModelSettings)
 
 
 def to_settings_response(settings: AppSettings) -> SettingsResponse:

@@ -93,6 +93,12 @@ export function registerAppHandlers(): void {
   })
 
   ipcMain.handle('check-first-run', () => {
+    // In dev/Pinokio mode, skip the first-run setup entirely.
+    // License acceptance and model downloads are not needed — ComfyUI
+    // handles models, and the app is distributed via Pinokio.
+    if (!app.isPackaged) {
+      return { needsSetup: false, needsLicense: false }
+    }
     const settingsPath = path.join(app.getPath('userData'), 'app_state.json')
     return getSetupStatus(settingsPath)
   })

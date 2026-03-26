@@ -18,7 +18,7 @@ interface SettingsModalProps {
   initialTab?: TabId
 }
 
-type TabId = 'general' | 'apiKeys' | 'inference' | 'promptEnhancer' | 'about'
+type TabId = 'general' | 'inference' | 'promptEnhancer' | 'about'
 
 export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProps) {
   const { settings, updateSettings, saveLtxApiKey, saveFalApiKey, saveGeminiApiKey, forceApiGenerations } = useAppSettings()
@@ -43,6 +43,17 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
   const [showModelLicense, setShowModelLicense] = useState(false)
   const [analyticsEnabled, setAnalyticsEnabled] = useState(false)
   const [projectAssetsPath, setProjectAssetsPath] = useState('')
+  const [comfyuiModels, setComfyuiModels] = useState<{
+    available: boolean
+    checkpoints: string[]
+    loras: string[]
+    upscale_models: string[]
+    text_encoders: string[]
+    vae: string[]
+    diffusion_models: string[]
+    latent_upscale_models: string[]
+  } | null>(null)
+  const [comfyuiModelsLoading, setComfyuiModelsLoading] = useState(false)
 
   // Sync active tab with initialTab prop when modal opens
   useEffect(() => {
@@ -50,19 +61,6 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
       setActiveTab(initialTab)
     }
   }, [isOpen, initialTab])
-
-  useEffect(() => {
-    if (!isOpen || activeTab !== 'apiKeys' || !focusLtxApiKeyInputOnTabChange) return
-
-    const frameId = window.requestAnimationFrame(() => {
-      ltxApiKeyInputRef.current?.focus()
-    })
-    setFocusLtxApiKeyInputOnTabChange(false)
-
-    return () => {
-      window.cancelAnimationFrame(frameId)
-    }
-  }, [activeTab, focusLtxApiKeyInputOnTabChange, isOpen])
 
   // Fetch app version when About tab is shown
   useEffect(() => {
@@ -102,6 +100,26 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
     const interval = setInterval(fetchStatus, 2000)
     return () => clearInterval(interval)
   }, [isOpen, isDownloading])
+
+  // Fetch ComfyUI available models when Models tab is shown
+  useEffect(() => {
+    if (!isOpen || activeTab !== 'inference') return
+    setComfyuiModelsLoading(true)
+    const fetchModels = async () => {
+      try {
+        const response = await backendFetch('/api/comfyui/models')
+        if (response.ok) {
+          const data = await response.json()
+          setComfyuiModels(data)
+        }
+      } catch (e) {
+        logger.error(`Failed to fetch ComfyUI models: ${e}`)
+      } finally {
+        setComfyuiModelsLoading(false)
+      }
+    }
+    fetchModels()
+  }, [isOpen, activeTab])
 
   // Handle text encoder download
   const handleDownloadTextEncoder = async () => {
@@ -165,11 +183,6 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
     })
   }
 
-  const openApiKeysAndFocusLtxInput = () => {
-    setActiveTab('apiKeys')
-    setFocusLtxApiKeyInputOnTabChange(true)
-  }
-
   const handlePromptCacheSizeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const size = Math.max(0, Math.min(1000, parseInt(e.target.value) || 100))
     onSettingsChange({
@@ -182,6 +195,13 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
     onSettingsChange({
       ...settings,
       fastModel: { ...settings.fastModel, useUpscaler: !settings.fastModel?.useUpscaler },
+    })
+  }
+
+  const handleComfyUIModelChange = (field: string, value: string) => {
+    onSettingsChange({
+      ...settings,
+      comfyuiModels: { ...settings.comfyuiModels, [field]: value },
     })
   }
 
@@ -266,8 +286,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
 
   const tabs = [
     { id: 'general' as TabId, label: 'General', icon: Settings },
-    { id: 'apiKeys' as TabId, label: 'API Keys', icon: KeyRound },
-    { id: 'inference' as TabId, label: 'Inference', icon: Sliders },
+    { id: 'inference' as TabId, label: 'Models', icon: Sliders },
     { id: 'promptEnhancer' as TabId, label: 'Prompt Enhancer', icon: Sparkles },
     { id: 'about' as TabId, label: 'About', icon: Info },
   ]
@@ -363,10 +382,6 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                       settings.userPrefersLtxApiVideoGenerations ? 'border-blue-500' : 'border-transparent hover:border-zinc-600'
                     }`}
                     onClick={() => {
-                      if (!settings.hasLtxApiKey) {
-                        openApiKeysAndFocusLtxInput()
-                        return
-                      }
                       onSettingsChange({
                         ...settings,
                         userPrefersLtxApiVideoGenerations: !settings.userPrefersLtxApiVideoGenerations,
@@ -421,10 +436,6 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                   }`}
                   onClick={() => {
                     if (!settings.useLocalTextEncoder) return
-                    if (!settings.hasLtxApiKey) {
-                      openApiKeysAndFocusLtxInput()
-                      return
-                    }
                     handleToggleLocalEncoder()
                   }}
                 >
@@ -747,303 +758,110 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
             </>
           )}
 
-          {activeTab === 'apiKeys' && (
-            <>
-              {/* LTX API Key Section */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <Zap className="h-4 w-4 text-blue-400" />
-                  <h3 className="text-sm font-semibold text-white">LTX API</h3>
-                </div>
-
-                <p className="text-xs text-zinc-500 leading-relaxed">
-                  Your LTX API key is used for cloud text encoding, prompt enhancement, and Pro generation.
-                  Add your key below to unlock these features.
-                </p>
-
-                <div className="bg-zinc-800/50 rounded-lg p-4 space-y-3">
-                  <div className="flex gap-2">
-                    <LtxApiKeyInput
-                      ref={ltxApiKeyInputRef}
-                      value={ltxApiKeyInput}
-                      onChange={(e) => setLtxApiKeyInput(e.target.value)}
-                      placeholder={settings.hasLtxApiKey ? 'Enter new key to replace...' : 'Enter your LTX API key...'}
-                      stopPropagation
-                      className="flex-1"
-                    />
-                    <button
-                      onClick={() => {
-                        const trimmed = ltxApiKeyInput.trim()
-                        if (!trimmed) return
-                        void saveLtxApiKey(trimmed)
-                        setLtxApiKeyInput('')
-                      }}
-                      disabled={!ltxApiKeyInput.trim()}
-                      className="px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-500 disabled:bg-zinc-700 disabled:text-zinc-500 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
-                    >
-                      Save Key
-                    </button>
-                  </div>
-                  <LtxApiKeyHelperRow stopPropagation />
-                  <div className="flex items-center justify-between">
-                    <div className={`text-xs px-2 py-1 rounded inline-flex items-center gap-1.5 ${
-                      settings.hasLtxApiKey
-                        ? 'bg-green-500/10 text-green-400'
-                        : 'bg-amber-500/10 text-amber-400'
-                    }`}>
-                      {settings.hasLtxApiKey ? (
-                        <>
-                          <Check className="h-3 w-3" />
-                          Key configured
-                        </>
-                      ) : (
-                        <>
-                          <AlertCircle className="h-3 w-3" />
-                          API key required
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* FAL API Key Section */}
-              <div className="space-y-4 pt-4 border-t border-zinc-800">
-                <div className="flex items-center gap-2">
-                  <KeyRound className="h-4 w-4 text-cyan-400" />
-                  <h3 className="text-sm font-semibold text-white">FAL AI</h3>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">Optional</span>
-                </div>
-
-                <p className="text-xs text-zinc-500 leading-relaxed">
-                  Your FAL AI key is used for generating images with Z Image Turbo when API generations are enabled.
-                </p>
-
-                <div className="bg-zinc-800/50 rounded-lg p-4 space-y-3">
-                  <div className="flex gap-2">
-                    <LtxApiKeyInput
-                      ref={falApiKeyInputRef}
-                      value={falApiKeyInput}
-                      onChange={(e) => setFalApiKeyInput(e.target.value)}
-                      placeholder={settings.hasFalApiKey ? 'Enter new key to replace...' : 'Enter your FAL AI API key...'}
-                      stopPropagation
-                      className="flex-1"
-                    />
-                    <button
-                      onClick={() => {
-                        const trimmed = falApiKeyInput.trim()
-                        if (!trimmed) return
-                        void saveFalApiKey(trimmed)
-                        setFalApiKeyInput('')
-                      }}
-                      disabled={!falApiKeyInput.trim()}
-                      className="px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-500 disabled:bg-zinc-700 disabled:text-zinc-500 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
-                    >
-                      Save Key
-                    </button>
-                  </div>
-                  <ApiKeyHelperRow
-                    stopPropagation
-                    label="Get FAL API key"
-                    onOpenKey={() => window.electronAPI.openFalApiKeyPage()}
-                  />
-                  <div className="flex items-center justify-between">
-                    <div className={`text-xs px-2 py-1 rounded inline-flex items-center gap-1.5 ${
-                      settings.hasFalApiKey
-                        ? 'bg-green-500/10 text-green-400'
-                        : 'bg-zinc-800 text-zinc-500'
-                    }`}>
-                      {settings.hasFalApiKey ? (
-                        <>
-                          <Check className="h-3 w-3" />
-                          Key configured
-                        </>
-                      ) : (
-                        <>
-                          <AlertCircle className="h-3 w-3" />
-                          Optional
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Gemini API Key Section */}
-              <div className="space-y-4 pt-4 border-t border-zinc-800">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-purple-400" />
-                  <h3 className="text-sm font-semibold text-white">Gemini API</h3>
-                </div>
-
-                <p className="text-xs text-zinc-500 leading-relaxed">
-                  Your Gemini API key is used for AI-powered prompt suggestions when filling timeline gaps.
-                </p>
-
-                <div className="bg-zinc-800/50 rounded-lg p-4 space-y-3">
-                  <div className="flex gap-2">
-                    <input
-                      ref={geminiApiKeyInputRef}
-                      type="password"
-                      value={geminiApiKeyInput}
-                      onChange={(e) => setGeminiApiKeyInput(e.target.value)}
-                      placeholder={settings.hasGeminiApiKey ? 'Enter new key to replace...' : 'Enter your Gemini API key...'}
-                      onKeyDown={(e) => e.stopPropagation()}
-                      className="flex-1 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                    <button
-                      onClick={() => {
-                        const trimmed = geminiApiKeyInput.trim()
-                        if (!trimmed) return
-                        void saveGeminiApiKey(trimmed)
-                        setGeminiApiKeyInput('')
-                      }}
-                      disabled={!geminiApiKeyInput.trim()}
-                      className="px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-500 disabled:bg-zinc-700 disabled:text-zinc-500 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
-                    >
-                      Save Key
-                    </button>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className={`text-xs px-2 py-1 rounded inline-flex items-center gap-1.5 ${
-                      settings.hasGeminiApiKey
-                        ? 'bg-green-500/10 text-green-400'
-                        : 'bg-amber-500/10 text-amber-400'
-                    }`}>
-                      {settings.hasGeminiApiKey ? (
-                        <>
-                          <Check className="h-3 w-3" />
-                          Key configured
-                        </>
-                      ) : (
-                        <>
-                          <AlertCircle className="h-3 w-3" />
-                          API key required
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs">
-                    <a
-                      href="https://aistudio.google.com/app/apikey"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-400 hover:text-blue-300 transition-colors underline underline-offset-2"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      Get Gemini API key →
-                    </a>
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
-
           {activeTab === 'inference' && (
             <>
-              {/* Fast Model Settings */}
-              <div className="space-y-4">
+              {/* ComfyUI Connection Status */}
+              <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <Zap className="h-4 w-4 text-green-400" />
-                  <h3 className="text-sm font-semibold text-white">Fast Model (Distilled)</h3>
+                  <Sliders className="h-4 w-4 text-blue-400" />
+                  <h3 className="text-sm font-semibold text-white">ComfyUI Models</h3>
                 </div>
-
-                <div className="bg-zinc-800/50 rounded-lg p-4 space-y-4">
-                  {/* Steps Info */}
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <label className="text-sm text-white">Inference Steps</label>
-                      <p className="text-xs text-zinc-500">Fixed at 8 steps (built into distilled model)</p>
-                    </div>
-                    <span className="px-3 py-1.5 bg-zinc-700 rounded-lg text-sm text-zinc-400">8</span>
-                  </div>
-
-                  {/* Upscaler Toggle */}
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <label className="text-sm text-white">2x Upscaler</label>
-                      <p className="text-xs text-zinc-500">When off, generates at native resolution</p>
-                    </div>
-                    <button
-                      onClick={handleFastUpscalerToggle}
-                      className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                        settings.fastModel?.useUpscaler !== false ? 'bg-green-500' : 'bg-zinc-700'
-                      }`}
-                    >
-                      <span
-                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                          settings.fastModel?.useUpscaler !== false ? 'translate-x-5' : 'translate-x-0'
-                        }`}
-                      />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Summary */}
-                <div className="text-xs text-zinc-500">
-                  Current: 8 steps, {settings.fastModel?.useUpscaler !== false ? 'with upscaler (2-stage, recommended)' : 'native resolution (experimental)'}
-                </div>
-              </div>
-
-              {/* Pro Model Settings */}
-              <div className="space-y-4 pt-4 border-t border-zinc-800">
-                <div className="flex items-center gap-2">
-                  <svg className="h-4 w-4 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-                  </svg>
-                  <h3 className="text-sm font-semibold text-white">Pro Model (Full)</h3>
-                </div>
-
-                <div className="bg-zinc-800/50 rounded-lg p-4 space-y-4">
-                  {/* Steps */}
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <label className="text-sm text-white">Inference Steps</label>
-                      <p className="text-xs text-zinc-500">More steps = better quality, slower</p>
-                    </div>
-                    <input
-                      type="number"
-                      min="1"
-                      max="100"
-                      value={settings.proModel?.steps ?? 20}
-                      onChange={handleProStepsChange}
-                      className="w-20 px-3 py-1.5 bg-zinc-700 border border-zinc-600 rounded-lg text-sm text-white text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-
-                  {/* Upscaler Toggle */}
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <label className="text-sm text-white">2x Upscaler</label>
-                      <p className="text-xs text-zinc-500">Doubles resolution in second pass</p>
-                    </div>
-                    <button
-                      onClick={handleProUpscalerToggle}
-                      className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                        settings.proModel?.useUpscaler !== false ? 'bg-blue-500' : 'bg-zinc-700'
-                      }`}
-                    >
-                      <span
-                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                          settings.proModel?.useUpscaler !== false ? 'translate-x-5' : 'translate-x-0'
-                        }`}
-                      />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Summary */}
-                <div className="text-xs text-zinc-500">
-                  Current: {settings.proModel?.steps ?? 20} steps, {settings.proModel?.useUpscaler !== false ? 'with upscaler (2-stage, recommended)' : 'native resolution'}
-                </div>
-              </div>
-
-              {/* Info Box */}
-              <div className="bg-zinc-800/30 rounded-lg p-3 mt-4">
-                <p className="text-xs text-zinc-400">
-                  <span className="text-blue-400 font-medium">Tip:</span> Lower steps = faster but lower quality.
-                  Higher steps = better quality but slower.
+                <p className="text-xs text-zinc-500 leading-relaxed">
+                  Select the models to use for video generation. These are loaded from your ComfyUI model folders.
+                  Empty selections use the workflow defaults.
                 </p>
+
+                {comfyuiModelsLoading ? (
+                  <div className="flex items-center gap-2 text-xs text-zinc-400 py-4">
+                    <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                    Loading models from ComfyUI...
+                  </div>
+                ) : comfyuiModels && !comfyuiModels.available ? (
+                  <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-3">
+                    <div className="flex items-center gap-2 text-xs text-amber-400">
+                      <AlertCircle className="h-4 w-4" />
+                      ComfyUI is not reachable. Start the app to load available models.
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {/* Checkpoint / Diffusion Model */}
+                    <ModelDropdown
+                      label="Checkpoint"
+                      description="Main model (checkpoints/ or diffusion_models/)"
+                      value={settings.comfyuiModels?.checkpoint ?? ''}
+                      options={[
+                        ...(comfyuiModels?.checkpoints ?? []),
+                        ...(comfyuiModels?.diffusion_models ?? []),
+                      ]}
+                      onChange={(v) => handleComfyUIModelChange('checkpoint', v)}
+                    />
+
+                    {/* Text Encoder */}
+                    <ModelDropdown
+                      label="Text Encoder"
+                      description="Text encoder model (text_encoders/)"
+                      value={settings.comfyuiModels?.textEncoder ?? ''}
+                      options={comfyuiModels?.text_encoders ?? []}
+                      onChange={(v) => handleComfyUIModelChange('textEncoder', v)}
+                    />
+
+                    {/* Video VAE */}
+                    <ModelDropdown
+                      label="Video VAE"
+                      description="Video decoder/encoder (vae/)"
+                      value={settings.comfyuiModels?.videoVae ?? ''}
+                      options={comfyuiModels?.vae ?? []}
+                      onChange={(v) => handleComfyUIModelChange('videoVae', v)}
+                    />
+
+                    {/* Audio VAE */}
+                    <ModelDropdown
+                      label="Audio VAE"
+                      description="Audio decoder/encoder (vae/)"
+                      value={settings.comfyuiModels?.audioVae ?? ''}
+                      options={comfyuiModels?.vae ?? []}
+                      onChange={(v) => handleComfyUIModelChange('audioVae', v)}
+                    />
+
+                    {/* Distilled LoRA */}
+                    <ModelDropdown
+                      label="Distilled LoRA"
+                      description="Fast inference LoRA (loras/)"
+                      value={settings.comfyuiModels?.distilledLora ?? ''}
+                      options={comfyuiModels?.loras ?? []}
+                      onChange={(v) => handleComfyUIModelChange('distilledLora', v)}
+                    />
+
+                    {/* Latent Upscale Model */}
+                    <ModelDropdown
+                      label="Latent Upscale Model"
+                      description="Spatial/temporal upscaler (latent_upscale_models/)"
+                      value={settings.comfyuiModels?.latentUpscaleModel ?? ''}
+                      options={comfyuiModels?.latent_upscale_models ?? []}
+                      onChange={(v) => handleComfyUIModelChange('latentUpscaleModel', v)}
+                    />
+
+                    {/* Refresh button */}
+                    <div className="pt-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full border-zinc-700 text-zinc-400 hover:text-white"
+                        onClick={() => {
+                          setComfyuiModelsLoading(true)
+                          backendFetch('/api/comfyui/models')
+                            .then(r => r.json())
+                            .then(data => setComfyuiModels(data))
+                            .catch(e => logger.error(`Refresh failed: ${e}`))
+                            .finally(() => setComfyuiModelsLoading(false))
+                        }}
+                      >
+                        Refresh Model Lists
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             </>
           )}
@@ -1063,23 +881,17 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
 
                 {!settings.hasLtxApiKey ? (
                   <div className="space-y-4 mt-2">
-                    <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-4 space-y-3">
+                    <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-lg p-4 space-y-3">
                       <div className="flex items-start gap-2.5">
-                        <AlertCircle className="h-4 w-4 text-amber-400 mt-0.5 flex-shrink-0" />
+                        <Info className="h-4 w-4 text-zinc-400 mt-0.5 flex-shrink-0" />
                         <div className="space-y-2">
-                          <p className="text-sm text-amber-300 font-medium">LTX API key required</p>
+                          <p className="text-sm text-zinc-300 font-medium">Prompt enhancement unavailable</p>
                           <p className="text-xs text-zinc-400 leading-relaxed">
-                            Prompt enhancement runs server-side on the LTX API. To use this feature, you need to configure
-                            an API key in the API Keys tab.
+                            Prompt enhancement requires the LTX cloud API which is not configured in this local installation.
+                            Your prompts will be used as-is.
                           </p>
                         </div>
                       </div>
-                      <button
-                        onClick={() => setActiveTab('apiKeys')}
-                        className="w-full mt-1 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg transition-colors"
-                      >
-                        Set API Key
-                      </button>
                     </div>
                   </div>
                 ) : (
@@ -1256,6 +1068,49 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
           </Button>
         </div>
       </div>
+    </div>
+  )
+}
+
+/** Reusable model dropdown for the Models settings tab. */
+function ModelDropdown({
+  label,
+  description,
+  value,
+  options,
+  onChange,
+}: {
+  label: string
+  description: string
+  value: string
+  options: string[]
+  onChange: (value: string) => void
+}) {
+  // Deduplicate and sort
+  const uniqueOptions = [...new Set(options)].sort()
+
+  return (
+    <div className="bg-zinc-800/50 rounded-lg p-3 space-y-1.5">
+      <div>
+        <label className="text-sm text-white font-medium">{label}</label>
+        <p className="text-[11px] text-zinc-500">{description}</p>
+      </div>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none cursor-pointer"
+        style={{
+          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
+          backgroundRepeat: 'no-repeat',
+          backgroundPosition: 'right 12px center',
+          paddingRight: '36px',
+        }}
+      >
+        <option value="">— Use workflow default —</option>
+        {uniqueOptions.map((opt) => (
+          <option key={opt} value={opt}>{opt}</option>
+        ))}
+      </select>
     </div>
   )
 }

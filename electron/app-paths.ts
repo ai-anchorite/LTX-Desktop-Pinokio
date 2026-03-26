@@ -4,7 +4,22 @@ import os from 'os'
 
 export const APP_FOLDER_NAME = 'LTXDesktop'
 
+const isDev = !app.isPackaged
+
+function getInstallDir(): string {
+  if (isDev) {
+    return process.cwd()
+  }
+  return path.dirname(app.getPath('exe'))
+}
+
 function resolveUserDataPath(): string {
+  // In dev / Pinokio mode: keep everything inside the install directory
+  if (isDev) {
+    return path.join(getInstallDir(), 'data')
+  }
+
+  // Packaged builds: use the platform-standard location
   if (process.platform === 'win32') {
     const localAppData = process.env.LOCALAPPDATA
       || path.join(os.homedir(), 'AppData', 'Local')

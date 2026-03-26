@@ -182,9 +182,8 @@ def _resolve_force_api_generations() -> bool:
 
 
 FORCE_API_GENERATIONS = _resolve_force_api_generations()
-REQUIRED_MODEL_TYPES: frozenset[ModelFileType] = (
-    frozenset() if FORCE_API_GENERATIONS else DEFAULT_REQUIRED_MODEL_TYPES
-)
+# No local models required — generation is handled by external ComfyUI instance.
+REQUIRED_MODEL_TYPES: frozenset[ModelFileType] = frozenset()
 
 CAMERA_MOTION_PROMPTS = {
     "none": "",

@@ -312,10 +312,15 @@ export async function startPythonBackend(): Promise<void> {
 
     pythonProcess.stderr?.on('data', (data: Buffer) => {
       const output = data.toString()
-      console.error(`[Python Error] ${output}`)
+      // Python libraries often write non-error output to stderr (warnings,
+      // logging config, etc.).  Only tag lines that look like real errors.
+      const looksLikeError = /\b(error|exception|traceback|critical|fatal)\b/i.test(output)
+        && !/- INFO -/.test(output)
+      const level = looksLikeError ? 'ERROR' : 'INFO'
+      console.error(`[Python] ${output}`)
       for (const line of output.split('\n')) {
         const trimmed = line.trimEnd()
-        if (trimmed) writeLog('ERROR', 'Backend', trimmed)
+        if (trimmed) writeLog(level, 'Backend', trimmed)
       }
       checkStarted(output)
     })

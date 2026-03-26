@@ -10,6 +10,16 @@ export interface FastModelSettings {
   useUpscaler: boolean
 }
 
+export interface ComfyUIModelSettings {
+  checkpoint: string
+  textEncoder: string
+  videoVae: string
+  audioVae: string
+  distilledLora: string
+  upscaler: string
+  latentUpscaleModel: string
+}
+
 export interface AppSettings {
   useTorchCompile: boolean
   loadOnStartup: boolean
@@ -26,6 +36,8 @@ export interface AppSettings {
   seedLocked: boolean
   lockedSeed: number
   modelsDir: string
+  comfyuiUrl: string
+  comfyuiModels: ComfyUIModelSettings
 }
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
@@ -44,6 +56,16 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   seedLocked: false,
   lockedSeed: 42,
   modelsDir: '',
+  comfyuiUrl: '',
+  comfyuiModels: {
+    checkpoint: '',
+    textEncoder: '',
+    videoVae: '',
+    audioVae: '',
+    distilledLora: '',
+    upscaler: '',
+    latentUpscaleModel: '',
+  },
 }
 
 type BackendProcessStatus = 'alive' | 'restarting' | 'dead'
