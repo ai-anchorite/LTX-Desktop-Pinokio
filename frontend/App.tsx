@@ -254,7 +254,7 @@ function AppContent() {
     </div>
   ) : null
 
-  const showGlobalControls = status.connected && setupState !== 'loading' && !(setupState !== 'loading' && setupState.needsSetup)
+  const showGlobalControls = status.connected && setupState !== 'loading' && !setupState.needsSetup
   const shouldBlockUntilSettingsLoaded = forceApiGenerations && !isLoaded
   const shouldShowForcedFirstRunUpsell = isForcedFirstRun && isLoaded && !settings.hasLtxApiKey
   const shouldShowGlobalForcedUpsell = forceApiGenerations && setupState !== 'loading' && !setupState.needsSetup && isLoaded && !settings.hasLtxApiKey
@@ -443,10 +443,16 @@ function AppContent() {
       {showGlobalControls && (
         <div className="fixed top-0 right-0 left-0 z-50 flex items-center justify-end gap-3 px-4 h-[38px] pointer-events-none" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
           <div className="flex items-center gap-3 pointer-events-auto" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-            {/* GPU Info */}
-            {status.gpuInfo && (
-              <span className="text-[11px] text-zinc-500 font-mono">
-                {status.gpuInfo.name} — {(status.gpuInfo.vramUsed / 1024).toFixed(1)}GB / {Math.round(status.gpuInfo.vram / 1024)}GB
+            {/* System Stats */}
+            {(status.gpuInfo || status.ramInfo) && (
+              <span className="text-xs text-zinc-500 font-mono tracking-tight">
+                {status.gpuInfo && (
+                  <>{status.gpuInfo.name} — {(status.gpuInfo.vramUsed / 1024).toFixed(1)}/{Math.round(status.gpuInfo.vram / 1024)}GB VRAM</>
+                )}
+                {status.gpuInfo && status.ramInfo && <>{' · '}</>}
+                {status.ramInfo && (
+                  <>{Math.round(status.ramInfo.used / 1024)}/{Math.round(status.ramInfo.total / 1024)}GB RAM</>
+                )}
               </span>
             )}
             <button

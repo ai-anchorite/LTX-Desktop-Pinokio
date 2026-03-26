@@ -10,6 +10,10 @@ interface BackendStatus {
     vram: number
     vramUsed: number
   } | null
+  ramInfo: {
+    total: number
+    used: number
+  } | null
 }
 
 interface ModelStatus {
@@ -58,6 +62,7 @@ export function useBackend(): UseBackendReturn {
     connected: false,
     modelsLoaded: false,
     gpuInfo: null,
+    ramInfo: null,
   })
   const [models, setModels] = useState<ModelStatus[]>([])
   const [processStatus, setProcessStatus] = useState<BackendProcessStatus | null>(null)
@@ -77,6 +82,7 @@ export function useBackend(): UseBackendReturn {
           connected: true,
           modelsLoaded: data.models_loaded,
           gpuInfo: data.gpu_info,
+          ramInfo: data.ram_info ?? null,
         })
         setError(null)
         return true

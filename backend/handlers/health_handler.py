@@ -5,7 +5,7 @@ from __future__ import annotations
 from threading import RLock
 from typing import TYPE_CHECKING
 
-from api_types import GpuInfoResponse, GpuTelemetry, HealthResponse, ModelStatusItem
+from api_types import GpuInfoResponse, GpuTelemetry, HealthResponse, ModelStatusItem, RamTelemetry
 from handlers.base import StateHandlerBase, with_state_lock
 from handlers.models_handler import ModelsHandler
 from runtime_config.model_download_specs import resolve_model_path
@@ -47,11 +47,23 @@ class HealthHandler(StateHandlerBase):
 
         files = self._models.refresh_available_files()
 
+        ram_info: RamTelemetry | None = None
+        try:
+            import psutil
+            mem = psutil.virtual_memory()
+            ram_info = RamTelemetry(
+                total=int(mem.total / (1024 * 1024)),
+                used=int(mem.used / (1024 * 1024)),
+            )
+        except Exception:
+            pass
+
         return HealthResponse(
             status="ok",
             models_loaded=models_loaded,
             active_model=active_model,
             gpu_info=GpuTelemetry(**self._gpu_info.get_gpu_info()),
+            ram_info=ram_info,
             sage_attention=self.config.use_sage_attention,
             models_status=[
                 ModelStatusItem(

@@ -78,11 +78,17 @@ class GpuTelemetry(BaseModel):
     vramUsed: int
 
 
+class RamTelemetry(BaseModel):
+    total: int       # Total RAM in MB
+    used: int        # Used RAM in MB
+
+
 class HealthResponse(BaseModel):
     status: str
     models_loaded: bool
     active_model: str | None
     gpu_info: GpuTelemetry
+    ram_info: RamTelemetry | None = None
     sage_attention: bool
     models_status: list[ModelStatusItem]
 
