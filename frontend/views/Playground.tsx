@@ -8,7 +8,6 @@ import { ImageResult } from '../components/ImageResult'
 import { SettingsPanel, type GenerationSettings } from '../components/SettingsPanel'
 import { ModeTabs, type GenerationMode } from '../components/ModeTabs'
 import { LtxLogo } from '../components/LtxLogo'
-import { ModelStatusDropdown } from '../components/ModelStatusDropdown'
 import { Textarea } from '../components/ui/textarea'
 import { Button } from '../components/ui/button'
 import { useGeneration } from '../hooks/use-generation'
@@ -246,15 +245,6 @@ export function Playground() {
         </div>
         
         <div className="flex items-center gap-4 pr-20">
-          {/* Model Status Dropdown */}
-          {!forceApiGenerations && <ModelStatusDropdown />}
-          
-          {/* GPU Info */}
-          {status.gpuInfo && (
-            <div className="text-sm text-zinc-500">
-              {status.gpuInfo.name} ({(status.gpuInfo.vramUsed / 1024).toFixed(1)}GB / {Math.round(status.gpuInfo.vram / 1024)}GB)
-            </div>
-          )}
         </div>
       </header>
 

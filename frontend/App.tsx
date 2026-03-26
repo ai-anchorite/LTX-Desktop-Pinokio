@@ -254,7 +254,7 @@ function AppContent() {
     </div>
   ) : null
 
-  const showGlobalControls = currentView !== 'home' && status.connected && setupState !== 'loading' && !setupState.needsSetup
+  const showGlobalControls = status.connected && setupState !== 'loading' && !(setupState !== 'loading' && setupState.needsSetup)
   const shouldBlockUntilSettingsLoaded = forceApiGenerations && !isLoaded
   const shouldShowForcedFirstRunUpsell = isForcedFirstRun && isLoaded && !settings.hasLtxApiKey
   const shouldShowGlobalForcedUpsell = forceApiGenerations && setupState !== 'loading' && !setupState.needsSetup && isLoaded && !settings.hasLtxApiKey
@@ -441,21 +441,29 @@ function AppContent() {
       {renderView()}
 
       {showGlobalControls && (
-        <div className="fixed top-[18px] right-3 z-50 flex items-center gap-1">
-          <button
-            onClick={() => setIsLogViewerOpen(true)}
-            className="h-8 w-8 flex items-center justify-center rounded-md text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
-            title="View Backend Logs"
-          >
-            <FileText className="h-4 w-4" />
-          </button>
-          <button
-            onClick={() => setIsSettingsOpen(true)}
-            className="h-8 w-8 flex items-center justify-center rounded-md text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
-            title="Settings"
-          >
-            <Settings className="h-4 w-4" />
-          </button>
+        <div className="fixed top-0 right-0 left-0 z-50 flex items-center justify-end gap-3 px-4 h-[38px] pointer-events-none" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
+          <div className="flex items-center gap-3 pointer-events-auto" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+            {/* GPU Info */}
+            {status.gpuInfo && (
+              <span className="text-[11px] text-zinc-500 font-mono">
+                {status.gpuInfo.name} — {(status.gpuInfo.vramUsed / 1024).toFixed(1)}GB / {Math.round(status.gpuInfo.vram / 1024)}GB
+              </span>
+            )}
+            <button
+              onClick={() => setIsLogViewerOpen(true)}
+              className="h-7 w-7 flex items-center justify-center rounded-md text-zinc-500 hover:text-white hover:bg-zinc-800 transition-colors"
+              title="View Backend Logs"
+            >
+              <FileText className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={() => setIsSettingsOpen(true)}
+              className="h-7 w-7 flex items-center justify-center rounded-md text-zinc-500 hover:text-white hover:bg-zinc-800 transition-colors"
+              title="Settings"
+            >
+              <Settings className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
       )}
 
