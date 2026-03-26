@@ -65,13 +65,14 @@ class ComfyUIModelSettings(SettingsBaseModel):
     Each field corresponds to a model slot that workflows can reference.
     Empty string means "use the workflow default".
     """
-    checkpoint: str = ""            # All-in-one checkpoint (checkpoints/ or diffusion_models/)
-    text_encoder: str = ""          # Text encoder (text_encoders/ or clip/)
-    video_vae: str = ""             # Video VAE (vae/)
-    audio_vae: str = ""             # Audio VAE (vae/)
-    distilled_lora: str = ""        # Distilled LoRA for fast inference (loras/)
-    upscaler: str = ""              # Spatial upscale model (upscale_models/)
-    latent_upscale_model: str = ""  # Latent upscale model (latent_upscale_models/)
+    checkpoint: str = ""                # All-in-one checkpoint (checkpoints/ or diffusion_models/)
+    text_encoder: str = ""              # Text encoder (text_encoders/ or clip/)
+    video_vae: str = ""                 # Video VAE (vae/)
+    audio_vae: str = ""                 # Audio VAE (vae/)
+    distilled_lora: str = ""            # Distilled LoRA for fast inference (loras/)
+    upscaler: str = ""                  # Spatial upscale model (upscale_models/)
+    spatial_upscale_model: str = ""     # Spatial latent upscaler (latent_upscale_models/)
+    temporal_upscale_model: str = ""    # Temporal latent upscaler (latent_upscale_models/)
 
 
 class AppSettings(SettingsBaseModel):

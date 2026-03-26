@@ -54,6 +54,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
     latent_upscale_models: string[]
   } | null>(null)
   const [comfyuiModelsLoading, setComfyuiModelsLoading] = useState(false)
+  const [modelsSubTab, setModelsSubTab] = useState<'ltx' | 'image' | 'upscaling'>('ltx')
 
   // Sync active tab with initialTab prop when modal opens
   useEffect(() => {
@@ -760,109 +761,145 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
 
           {activeTab === 'inference' && (
             <>
-              {/* ComfyUI Connection Status */}
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Sliders className="h-4 w-4 text-blue-400" />
-                  <h3 className="text-sm font-semibold text-white">ComfyUI Models</h3>
-                </div>
-                <p className="text-xs text-zinc-500 leading-relaxed">
-                  Select the models to use for video generation. These are loaded from your ComfyUI model folders.
-                  Empty selections use the workflow defaults.
-                </p>
-
-                {comfyuiModelsLoading ? (
-                  <div className="flex items-center gap-2 text-xs text-zinc-400 py-4">
-                    <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
-                    Loading models from ComfyUI...
-                  </div>
-                ) : comfyuiModels && !comfyuiModels.available ? (
-                  <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-3">
-                    <div className="flex items-center gap-2 text-xs text-amber-400">
-                      <AlertCircle className="h-4 w-4" />
-                      ComfyUI is not reachable. Start the app to load available models.
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {/* Checkpoint / Diffusion Model */}
-                    <ModelDropdown
-                      label="Checkpoint"
-                      description="Main model (checkpoints/ or diffusion_models/)"
-                      value={settings.comfyuiModels?.checkpoint ?? ''}
-                      options={[
-                        ...(comfyuiModels?.checkpoints ?? []),
-                        ...(comfyuiModels?.diffusion_models ?? []),
-                      ]}
-                      onChange={(v) => handleComfyUIModelChange('checkpoint', v)}
-                    />
-
-                    {/* Text Encoder */}
-                    <ModelDropdown
-                      label="Text Encoder"
-                      description="Text encoder model (text_encoders/)"
-                      value={settings.comfyuiModels?.textEncoder ?? ''}
-                      options={comfyuiModels?.text_encoders ?? []}
-                      onChange={(v) => handleComfyUIModelChange('textEncoder', v)}
-                    />
-
-                    {/* Video VAE */}
-                    <ModelDropdown
-                      label="Video VAE"
-                      description="Video decoder/encoder (vae/)"
-                      value={settings.comfyuiModels?.videoVae ?? ''}
-                      options={comfyuiModels?.vae ?? []}
-                      onChange={(v) => handleComfyUIModelChange('videoVae', v)}
-                    />
-
-                    {/* Audio VAE */}
-                    <ModelDropdown
-                      label="Audio VAE"
-                      description="Audio decoder/encoder (vae/)"
-                      value={settings.comfyuiModels?.audioVae ?? ''}
-                      options={comfyuiModels?.vae ?? []}
-                      onChange={(v) => handleComfyUIModelChange('audioVae', v)}
-                    />
-
-                    {/* Distilled LoRA */}
-                    <ModelDropdown
-                      label="Distilled LoRA"
-                      description="Fast inference LoRA (loras/)"
-                      value={settings.comfyuiModels?.distilledLora ?? ''}
-                      options={comfyuiModels?.loras ?? []}
-                      onChange={(v) => handleComfyUIModelChange('distilledLora', v)}
-                    />
-
-                    {/* Latent Upscale Model */}
-                    <ModelDropdown
-                      label="Latent Upscale Model"
-                      description="Spatial/temporal upscaler (latent_upscale_models/)"
-                      value={settings.comfyuiModels?.latentUpscaleModel ?? ''}
-                      options={comfyuiModels?.latent_upscale_models ?? []}
-                      onChange={(v) => handleComfyUIModelChange('latentUpscaleModel', v)}
-                    />
-
-                    {/* Refresh button */}
-                    <div className="pt-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="w-full border-zinc-700 text-zinc-400 hover:text-white"
-                        onClick={() => {
-                          setComfyuiModelsLoading(true)
-                          backendFetch('/api/comfyui/models')
-                            .then(r => r.json())
-                            .then(data => setComfyuiModels(data))
-                            .catch(e => logger.error(`Refresh failed: ${e}`))
-                            .finally(() => setComfyuiModelsLoading(false))
-                        }}
-                      >
-                        Refresh Model Lists
-                      </Button>
-                    </div>
-                  </div>
-                )}
+              {/* Sub-tabs */}
+              <div className="flex gap-1 mb-4 bg-zinc-800/50 rounded-lg p-1">
+                {([
+                  { id: 'ltx' as const, label: 'LTX Models' },
+                  { id: 'image' as const, label: 'Image Models', disabled: true },
+                  { id: 'upscaling' as const, label: 'Upscaling Models', disabled: true },
+                ] as const).map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => !('disabled' in tab && tab.disabled) && setModelsSubTab(tab.id)}
+                    disabled={'disabled' in tab && tab.disabled}
+                    className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                      modelsSubTab === tab.id
+                        ? 'bg-zinc-700 text-white'
+                        : 'disabled' in tab && tab.disabled
+                          ? 'text-zinc-600 cursor-not-allowed'
+                          : 'text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    {tab.label}
+                    {'disabled' in tab && tab.disabled && <span className="ml-1 text-[9px] text-zinc-600">soon</span>}
+                  </button>
+                ))}
               </div>
+
+              {modelsSubTab === 'ltx' && (
+                <div className="space-y-3">
+                  <p className="text-xs text-zinc-500 leading-relaxed">
+                    Select the models for LTX video generation. Loaded from your ComfyUI model folders.
+                    Empty selections use the workflow defaults.
+                  </p>
+
+                  {comfyuiModelsLoading ? (
+                    <div className="flex items-center gap-2 text-xs text-zinc-400 py-4">
+                      <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                      Loading models...
+                    </div>
+                  ) : (
+                    <>
+                      {/* Checkpoint / Diffusion Model */}
+                      <ModelDropdown
+                        label="Checkpoint"
+                        description="Main model (checkpoints/ or diffusion_models/)"
+                        value={settings.comfyuiModels?.checkpoint ?? ''}
+                        options={[
+                          ...(comfyuiModels?.checkpoints ?? []),
+                          ...(comfyuiModels?.diffusion_models ?? []),
+                        ]}
+                        onChange={(v) => handleComfyUIModelChange('checkpoint', v)}
+                      />
+
+                      {/* Text Encoder */}
+                      <ModelDropdown
+                        label="Text Encoder"
+                        description="Text encoder model (text_encoders/)"
+                        value={settings.comfyuiModels?.textEncoder ?? ''}
+                        options={comfyuiModels?.text_encoders ?? []}
+                        onChange={(v) => handleComfyUIModelChange('textEncoder', v)}
+                      />
+
+                      {/* Video VAE */}
+                      <ModelDropdown
+                        label="Video VAE"
+                        description="Video decoder/encoder (vae/)"
+                        value={settings.comfyuiModels?.videoVae ?? ''}
+                        options={comfyuiModels?.vae ?? []}
+                        onChange={(v) => handleComfyUIModelChange('videoVae', v)}
+                      />
+
+                      {/* Audio VAE */}
+                      <ModelDropdown
+                        label="Audio VAE"
+                        description="Audio decoder/encoder (vae/)"
+                        value={settings.comfyuiModels?.audioVae ?? ''}
+                        options={comfyuiModels?.vae ?? []}
+                        onChange={(v) => handleComfyUIModelChange('audioVae', v)}
+                      />
+
+                      {/* Distilled LoRA */}
+                      <ModelDropdown
+                        label="Distilled LoRA"
+                        description="Fast inference LoRA (loras/)"
+                        value={settings.comfyuiModels?.distilledLora ?? ''}
+                        options={comfyuiModels?.loras ?? []}
+                        onChange={(v) => handleComfyUIModelChange('distilledLora', v)}
+                      />
+
+                      {/* Spatial Upscale Model */}
+                      <ModelDropdown
+                        label="Spatial Upscale Model"
+                        description="Spatial latent upscaler (latent_upscale_models/)"
+                        value={settings.comfyuiModels?.spatialUpscaleModel ?? ''}
+                        options={comfyuiModels?.latent_upscale_models ?? []}
+                        onChange={(v) => handleComfyUIModelChange('spatialUpscaleModel', v)}
+                      />
+
+                      {/* Temporal Upscale Model */}
+                      <ModelDropdown
+                        label="Temporal Upscale Model"
+                        description="Temporal latent upscaler (latent_upscale_models/)"
+                        value={settings.comfyuiModels?.temporalUpscaleModel ?? ''}
+                        options={comfyuiModels?.latent_upscale_models ?? []}
+                        onChange={(v) => handleComfyUIModelChange('temporalUpscaleModel', v)}
+                      />
+
+                      {/* Refresh button */}
+                      <div className="pt-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full border-zinc-700 text-zinc-400 hover:text-white"
+                          onClick={() => {
+                            setComfyuiModelsLoading(true)
+                            backendFetch('/api/comfyui/models')
+                              .then(r => r.json())
+                              .then(data => setComfyuiModels(data))
+                              .catch(e => logger.error(`Refresh failed: ${e}`))
+                              .finally(() => setComfyuiModelsLoading(false))
+                          }}
+                        >
+                          Refresh Model Lists
+                        </Button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {modelsSubTab === 'image' && (
+                <div className="flex items-center justify-center py-12 text-zinc-500 text-sm">
+                  Image model selection coming soon
+                </div>
+              )}
+
+              {modelsSubTab === 'upscaling' && (
+                <div className="flex items-center justify-center py-12 text-zinc-500 text-sm">
+                  Upscaling model selection coming soon
+                </div>
+              )}
             </>
           )}
 

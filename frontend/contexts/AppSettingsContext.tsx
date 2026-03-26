@@ -17,7 +17,8 @@ export interface ComfyUIModelSettings {
   audioVae: string
   distilledLora: string
   upscaler: string
-  latentUpscaleModel: string
+  spatialUpscaleModel: string
+  temporalUpscaleModel: string
 }
 
 export interface AppSettings {
@@ -64,7 +65,8 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
     audioVae: '',
     distilledLora: '',
     upscaler: '',
-    latentUpscaleModel: '',
+    spatialUpscaleModel: '',
+    temporalUpscaleModel: '',
   },
 }
 

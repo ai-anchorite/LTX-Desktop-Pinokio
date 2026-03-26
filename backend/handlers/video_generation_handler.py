@@ -160,8 +160,10 @@ class VideoGenerationHandler(StateHandlerBase):
                 params["distilled_lora"] = model_cfg.distilled_lora
             if model_cfg.upscaler:
                 params["upscaler"] = model_cfg.upscaler
-            if model_cfg.latent_upscale_model:
-                params["latent_upscale_model"] = model_cfg.latent_upscale_model
+            if model_cfg.spatial_upscale_model:
+                params["spatial_upscale_model"] = model_cfg.spatial_upscale_model
+            if model_cfg.temporal_upscale_model:
+                params["temporal_upscale_model"] = model_cfg.temporal_upscale_model
             if model_cfg.video_vae:
                 params["video_vae"] = model_cfg.video_vae
             if model_cfg.audio_vae:
