@@ -40,7 +40,9 @@ export function Playground() {
   const { forceApiGenerations, shouldVideoGenerateWithLtxApi } = useAppSettings()
   const [mode, setMode] = useState<GenerationMode>('text-to-video')
   const [prompt, setPrompt] = useState('')
-  const [selectedImage, setSelectedImage] = useState<string | null>(null)
+  const [imageDisplayUrl, setImageDisplayUrl] = useState<string | null>(null)
+  const [imageFilePath, setImageFilePath] = useState<string | null>(null)
+  const [imageFileName, setImageFileName] = useState<string | null>(null)
   const [selectedAudio, setSelectedAudio] = useState<string | null>(null)
   const [settings, setSettings] = useState<GenerationSettings>(() => ({ ...DEFAULT_SETTINGS }))
 
@@ -162,7 +164,7 @@ export function Playground() {
         : settings
       // Auto-detect: if image is loaded → I2V, otherwise → T2V
       if (!prompt.trim()) return
-      const imagePath = selectedImage ? fileUrlToPath(selectedImage) : null
+      const imagePath = imageFilePath || null
       const audioPath = selectedAudio ? fileUrlToPath(selectedAudio) : null
       if (audioPath) effectiveVideoSettings.model = 'pro'
       generate(prompt, imagePath, effectiveVideoSettings, audioPath)
@@ -176,15 +178,20 @@ export function Playground() {
       return
     }
 
-    // imageUrl is already a file:// URL — just pass it as the selected image path
-    setSelectedImage(imageUrl)
+    // Use the generated image for I2V — imageUrl is a file:// URL
+    const fsPath = fileUrlToPath(imageUrl)
+    setImageDisplayUrl(imageUrl)
+    setImageFilePath(fsPath)
+    setImageFileName(imageUrl.split(/[/\\]/).pop() || 'image')
     setMode('image-to-video')
     generatedImageRef.current = imageUrl
   }
 
   const handleClearAll = () => {
     setPrompt('')
-    setSelectedImage(null)
+    setImageDisplayUrl(null)
+    setImageFilePath(null)
+    setImageFileName(null)
     setSelectedAudio(null)
     const baseDefaults = { ...DEFAULT_SETTINGS }
     const shouldSanitizeVideoSettings = shouldVideoGenerateWithLtxApi && mode !== 'text-to-image'
@@ -265,8 +272,19 @@ export function Playground() {
             {isVideoMode && !isRetakeMode && (
               <>
                 <ImageUploader
-                  selectedImage={selectedImage}
-                  onImageSelect={setSelectedImage}
+                  displayUrl={imageDisplayUrl}
+                  fileName={imageFileName}
+                  onImageSelect={(img) => {
+                    if (img) {
+                      setImageDisplayUrl(img.displayUrl)
+                      setImageFilePath(img.filePath)
+                      setImageFileName(img.filePath.split(/[/\\]/).pop() || 'image')
+                    } else {
+                      setImageDisplayUrl(null)
+                      setImageFilePath(null)
+                      setImageFileName(null)
+                    }
+                  }}
                 />
                 <AudioUploader
                   selectedAudio={selectedAudio}

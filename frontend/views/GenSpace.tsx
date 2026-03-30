@@ -352,7 +352,7 @@ function PromptBar({
   buttonLabel: string
   buttonIcon: React.ReactNode
   inputImage: string | null
-  onInputImageChange: (url: string | null) => void
+  onInputImageChange: (url: string | null, filePath?: string | null) => void
   inputAudio: string | null
   onInputAudioChange: (url: string | null) => void
   settings: {
@@ -396,8 +396,30 @@ function PromptBar({
     if (assetData) {
       const asset = JSON.parse(assetData) as Asset
       if (asset.type === 'image') {
-        onInputImageChange(asset.url)
+        onInputImageChange(asset.url, asset.path || null)
       }
+      return
+    }
+
+    // Handle file drops from OS
+    const file = e.dataTransfer.files?.[0]
+    if (file && file.type.startsWith('image/')) {
+      const blobUrl = URL.createObjectURL(file)
+      ;(async () => {
+        try {
+          if (window.electronAPI?.saveImageToTemp) {
+            const buffer = await file.arrayBuffer()
+            const result = await window.electronAPI.saveImageToTemp(buffer, file.name)
+            if (result.success && result.path) {
+              onInputImageChange(blobUrl, result.path)
+              return
+            }
+          }
+        } catch { /* fall through */ }
+        const rawPath = (file as any).path as string | undefined
+        const resolved = rawPath ? (window.electronAPI?.resolvePath(rawPath) ?? rawPath) : null
+        onInputImageChange(blobUrl, resolved?.replace(/\\/g, '/') ?? null)
+      })()
     }
   }
 
@@ -443,16 +465,23 @@ function PromptBar({
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file && file.type.startsWith('image/')) {
-      // In Electron, File objects have a .path property with the full filesystem path
-      const filePath = (file as any).path as string | undefined
-      if (filePath) {
-        const normalized = filePath.replace(/\\/g, '/')
-        const fileUrl = normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`
-        onInputImageChange(fileUrl)
-      } else {
-        const url = URL.createObjectURL(file)
-        onInputImageChange(url)
-      }
+      const blobUrl = URL.createObjectURL(file)
+      // Copy to temp via IPC for a reliable absolute path
+      ;(async () => {
+        try {
+          if (window.electronAPI?.saveImageToTemp) {
+            const buffer = await file.arrayBuffer()
+            const result = await window.electronAPI.saveImageToTemp(buffer, file.name)
+            if (result.success && result.path) {
+              onInputImageChange(blobUrl, result.path)
+              return
+            }
+          }
+        } catch { /* fall through */ }
+        const rawPath = (file as any).path as string | undefined
+        const resolved = rawPath ? (window.electronAPI?.resolvePath(rawPath) ?? rawPath) : null
+        onInputImageChange(blobUrl, resolved?.replace(/\\/g, '/') ?? null)
+      })()
     }
   }
   
@@ -482,7 +511,7 @@ function PromptBar({
               <>
                 <img src={inputImage} alt="" className="w-full h-full object-cover rounded-md" />
                 <button
-                  onClick={(e) => { e.stopPropagation(); onInputImageChange(null) }}
+                  onClick={(e) => { e.stopPropagation(); onInputImageChange(null, null) }}
                   className="absolute -top-1 -right-1 p-0.5 rounded-full bg-zinc-800 text-zinc-400 hover:text-white z-10"
                 >
                   <X className="h-3 w-3" />
@@ -871,6 +900,7 @@ export function GenSpace() {
   const [mode, setMode] = useState<'image' | 'video' | 'retake' | 'ic-lora'>('video')
   const [prompt, setPrompt] = useState('')
   const [inputImage, setInputImage] = useState<string | null>(null)
+  const [inputImageFilePath, setInputImageFilePath] = useState<string | null>(null)
   const [inputAudio, setInputAudio] = useState<string | null>(null)
   const [localError, setLocalError] = useState<string | null>(null)
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null)
@@ -977,6 +1007,7 @@ export function GenSpace() {
     if (genSpaceEditImageUrl) {
       setMode('video')
       setInputImage(genSpaceEditImageUrl)
+      setInputImageFilePath(fileUrlToPath(genSpaceEditImageUrl))
       setPrompt('')
       setGenSpaceEditImageUrl(null)
       setGenSpaceEditMode(null)
@@ -1344,8 +1375,8 @@ export function GenSpace() {
       )
     } else {
       // Generate video (t2v if no image/audio, i2v if image, a2v if audio)
-      // Extract filesystem path from the file:// URL for the backend
-      const imagePath = inputImage ? fileUrlToPath(inputImage) : null
+      // Use the stored filesystem path directly for the backend
+      const imagePath = inputImageFilePath || null
       const audioPath = inputAudio ? fileUrlToPath(inputAudio) : null
       const videoSettings = applyForcedVideoSettings(settings)
       if (audioPath) videoSettings.model = 'pro'
@@ -1385,6 +1416,7 @@ export function GenSpace() {
   const handleCreateVideo = (imageAsset: Asset) => {
     setMode('video')
     setInputImage(imageAsset.url)
+    setInputImageFilePath(imageAsset.path || fileUrlToPath(imageAsset.url))
     setPrompt(`${imageAsset.prompt || 'The scene comes to life...'}`)
   }
 
@@ -1657,7 +1689,10 @@ export function GenSpace() {
           buttonLabel={promptButtonLabel}
           buttonIcon={promptButtonIcon}
           inputImage={inputImage}
-          onInputImageChange={setInputImage}
+          onInputImageChange={(url, filePath) => {
+            setInputImage(url)
+            setInputImageFilePath(filePath ?? null)
+          }}
           inputAudio={inputAudio}
           onInputAudioChange={setInputAudio}
           settings={settings}

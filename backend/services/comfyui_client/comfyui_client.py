@@ -10,8 +10,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import shutil
-import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -61,14 +59,12 @@ class ComfyUIClient:
         Returns a dict with keys: checkpoints, loras, vae, text_encoders,
         diffusion_models, latent_upscale_models, upscale_models.
         """
-        # Resolve ComfyUI models root — app/comfyui/models/ relative to backend
         comfyui_models_dir = _BACKEND_DIR.parent / "comfyui" / "models"
 
         if not comfyui_models_dir.exists():
             logger.warning("ComfyUI models directory not found: %s", comfyui_models_dir)
             return {}
 
-        # Map of category -> subdirectory name(s)
         CATEGORY_DIRS: dict[str, list[str]] = {
             "checkpoints": ["checkpoints"],
             "diffusion_models": ["diffusion_models"],
@@ -91,7 +87,6 @@ class ComfyUIClient:
                     continue
                 for f in scan_dir.rglob("*"):
                     if f.is_file() and f.suffix.lower() in MODEL_EXTENSIONS:
-                        # Use path relative to the scan dir (preserves subfolders)
                         rel = str(f.relative_to(scan_dir))
                         models.append(rel)
             result[category] = sorted(set(models))
@@ -105,20 +100,13 @@ class ComfyUIClient:
         workflow_name: str,
         params: dict[str, Any],
     ) -> "WorkflowResult":
-        """Execute a named workflow with the given parameters.
-
-        Args:
-            workflow_name: Filename of the workflow JSON in the workflows dir.
-            params: Dict of ComfyKit DSL parameter values.
-
-        Returns:
-            WorkflowResult with status, video paths, and metadata.
-        """
+        """Execute a named workflow with the given parameters."""
         workflow_path = self._workflows_dir / workflow_name
         if not workflow_path.exists():
             raise FileNotFoundError(f"Workflow not found: {workflow_path}")
 
-        logger.info("Executing workflow %s with params: %s", workflow_name, {k: v for k, v in params.items() if k != "image"})
+        logger.info("Executing workflow %s with params: %s", workflow_name,
+                     {k: v for k, v in params.items() if k != "image"})
 
         result = await self._kit.execute(str(workflow_path), params)
 
@@ -138,18 +126,13 @@ class ComfyUIClient:
         workflow_name: str,
         params: dict[str, Any],
     ) -> "WorkflowResult":
-        """Synchronous wrapper for execute_workflow.
-
-        The LTX-Desktop backend handlers run synchronously, so this bridges
-        into the async ComfyKit API.
-        """
+        """Synchronous wrapper for execute_workflow."""
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
             loop = None
 
         if loop and loop.is_running():
-            # We're inside an existing event loop (e.g. FastAPI) — run in a new thread
             import concurrent.futures
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                 future = pool.submit(asyncio.run, self.execute_workflow(workflow_name, params))
@@ -158,15 +141,7 @@ class ComfyUIClient:
             return asyncio.run(self.execute_workflow(workflow_name, params))
 
     def download_video(self, video_url: str, output_path: Path) -> Path:
-        """Download a video from ComfyUI's output to a local path.
-
-        Args:
-            video_url: URL returned by ComfyKit (e.g. http://127.0.0.1:8188/view?...).
-            output_path: Local path to save the video file.
-
-        Returns:
-            The output_path after successful download.
-        """
+        """Download a video from ComfyUI's output to a local path."""
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         with httpx.Client(timeout=120) as client:
@@ -212,9 +187,7 @@ class WorkflowResult:
     @property
     def video_url(self) -> str | None:
         """Get the primary video output URL."""
-        # Prefer named output "video" from $output.video marker
         by_var = self.videos_by_var.get("video", [])
         if by_var:
             return by_var[0]
-        # Fall back to first video in the list
         return self.videos[0] if self.videos else None

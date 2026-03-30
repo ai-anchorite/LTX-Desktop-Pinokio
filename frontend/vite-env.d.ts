@@ -63,5 +63,7 @@ interface Window {
     setAnalyticsEnabled: (enabled: boolean) => Promise<void>
     sendAnalyticsEvent: (eventName: string, extraDetails?: Record<string, unknown> | null) => Promise<void>
     platform: string
+    resolvePath: (filePath: string) => string
+    saveImageToTemp: (data: ArrayBuffer, originalName: string) => Promise<{ success: boolean; path?: string; error?: string }>
   }
 }

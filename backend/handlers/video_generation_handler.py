@@ -138,16 +138,16 @@ class VideoGenerationHandler(StateHandlerBase):
             if not comfyui.is_available():
                 raise HTTPError(503, "ComfyUI server is not reachable. Please ensure ComfyUI is running.")
 
-            # Build ComfyKit params
+            # Build ComfyKit params — these map to DSL markers in the workflow JSON
             params: dict[str, object] = {
                 "prompt": enhanced_prompt,
                 "negative_prompt": negative_prompt,
                 "width": width,
                 "height": height,
                 "num_frames": num_frames,
-                "fps": fps,
+                "fps": float(fps),
                 "seed": seed,
-                "t2v_mode": not is_i2v,  # False = I2V, True = T2V
+                "t2v_mode": not is_i2v,  # True = bypass I2V conditioning (T2V), False = I2V
             }
 
             # Inject model selections from settings (if configured)
@@ -156,14 +156,6 @@ class VideoGenerationHandler(StateHandlerBase):
                 params["checkpoint"] = model_cfg.checkpoint
             if model_cfg.text_encoder:
                 params["text_encoder"] = model_cfg.text_encoder
-            if model_cfg.distilled_lora:
-                params["distilled_lora"] = model_cfg.distilled_lora
-            if model_cfg.upscaler:
-                params["upscaler"] = model_cfg.upscaler
-            if model_cfg.spatial_upscale_model:
-                params["spatial_upscale_model"] = model_cfg.spatial_upscale_model
-            if model_cfg.temporal_upscale_model:
-                params["temporal_upscale_model"] = model_cfg.temporal_upscale_model
             if model_cfg.video_vae:
                 params["video_vae"] = model_cfg.video_vae
             if model_cfg.audio_vae:
@@ -174,15 +166,13 @@ class VideoGenerationHandler(StateHandlerBase):
                 params["image"] = str(validated_image)
                 logger.info("[comfyui:%s] Input image: %s", gen_mode, validated_image)
 
-            # Select workflow
-            workflow_name = "video_ltx2_3_i2v.json"
-            # TODO: Add separate T2V workflow when available. For now the I2V
-            # workflow supports both modes via the t2v_mode boolean switch.
+            # Select workflow — single workflow handles both T2V and I2V via t2v_mode switch
+            workflow_name = "LTX23_T_I2V_split1.json"
 
             self._generation.update_progress("queued", 10, None, None)
 
             # Execute via ComfyKit
-            self._generation.update_progress("inference", 20, None, None)
+            self._generation.update_progress("inference", 15, None, None)
             result = comfyui.execute_workflow_sync(workflow_name, params)
 
             if self._generation.is_generation_cancelled():

@@ -20,13 +20,20 @@ _ALLOWED_IMAGE_FORMATS = {"PNG", "JPEG", "WEBP", "GIF", "BMP", "TIFF"}
 
 
 def normalize_optional_path(value: str | None) -> str | None:
-    """Treat None/empty/whitespace-only values as 'not provided'."""
+    """Treat None/empty/whitespace-only values as 'not provided'.
+
+    Also resolves relative paths to absolute so callers always get a
+    fully-qualified filesystem path.
+    """
 
     if value is None:
         return None
-    if value.strip() == "":
+    stripped = value.strip()
+    if stripped == "":
         return None
-    return value
+    # Resolve relative paths (e.g. ./image.png) to absolute
+    resolved = str(Path(stripped).resolve())
+    return resolved
 
 
 def _assert_is_file(file_path: Path, *, kind: str, raw_path: str) -> None:
